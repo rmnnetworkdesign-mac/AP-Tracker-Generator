@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RMN AP Tracker Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --orange: #FF6B2B;
+    --orange-dim: #cc5522;
+    --bg: #0e0e0f;
+    --bg2: #141416;
+    --bg3: #1a1a1d;
+    --border: #252528;
+    --border2: #2e2e32;
+    --text: #e2e2e6;
+    --text-dim: #888;
+    --text-muted: #444;
+    --green: #4ade80;
+    --blue: #60a5fa;
+    --yellow: #fbbf24;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 28px; border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--orange); flex-shrink: 0; }
+  .logo-text { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--orange); }
+  .logo-sub { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--text-muted); letter-spacing: .05em; }
+
+  /* ── TABS ── */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg2); padding: 0 28px; }
+  .tab {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 12px 18px; border: none; background: none; cursor: pointer; color: var(--text-muted);
+    border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+  .tab-badge {
+    display: inline-block; margin-left: 6px; background: var(--orange);
+    color: #000; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 8px;
+  }
+
+  /* ── PANELS ── */
+  .panel { display: none; padding: 28px; max-width: 1200px; margin: 0 auto; }
+  .panel.active { display: block; }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone {
+    border: 2px dashed var(--border2); border-radius: 8px; padding: 48px 24px;
+    text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+    background: var(--bg2);
+  }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--orange); background: #1a100a; }
+  .upload-icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-title { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+  .upload-sub { font-size: 12px; color: var(--text-dim); }
+  #fileInput { display: none; }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    display: none; align-items: center; gap: 10px;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 16px; margin-top: 16px; font-family: var(--mono); font-size: 12px;
+  }
+  .status-bar.visible { display: flex; }
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid var(--border2);
+    border-top-color: var(--orange); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status-ok { color: var(--green); }
+  .status-err { color: #f87171; }
+
+  /* ── FORM GRID ── */
+  .form-section { margin-top: 24px; }
+  .section-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--orange); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 11px; color: var(--text-dim); font-family: var(--mono); letter-spacing: .04em; }
+  .form-group input, .form-group select {
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px;
+    color: var(--text); font-family: var(--mono); font-size: 12px; padding: 7px 10px; outline: none;
+    transition: border-color .15s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--orange); }
+  .form-group input.auto-filled { border-color: #1a3a1a; color: var(--green); }
+
+  /* ── ERROR BOX ── */
+  .error-box {
+    display: none; background: #1a0808; border: 1px solid #5a1a1a;
+    border-radius: 6px; padding: 12px 16px; color: #f87171; font-size: 12px;
+    font-family: var(--mono); margin-top: 16px; line-height: 1.6;
+  }
+  .error-box.visible { display: block; }
+
+  /* ── AP TABLE ── */
+  .table-wrap { overflow-x: auto; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+  thead tr { background: var(--bg3); border-bottom: 1px solid var(--border2); }
+  thead th {
+    text-align: left; padding: 8px 10px; color: var(--text-muted); font-weight: 500;
+    font-size: 10px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: var(--bg3); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody td { padding: 6px 10px; vertical-align: middle; }
+  .td-num { color: var(--orange); font-weight: 600; }
+  .td-ap-name { color: var(--blue); }
+  .td-desc { color: var(--text-dim); font-size: 10px; }
+  .td-missing { color: var(--text-muted); font-style: italic; }
+
+  .cell-input {
+    background: var(--bg); border: 1px solid var(--border2); border-radius: 3px;
+    color: var(--text); font-family: var(--mono); font-size: 11px;
+    padding: 3px 7px; outline: none; width: 100%; min-width: 90px;
+    transition: border-color .15s;
+  }
+  .cell-input:focus { border-color: var(--orange); }
+
+  /* ── BUTTONS ── */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 22px; border: none; border-radius: 5px;
+    font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .05em;
+    cursor: pointer; transition: opacity .15s, background .15s;
+  }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: var(--orange); color: #000; }
+  .btn-primary:hover:not(:disabled) { background: var(--orange-dim); }
+  .btn-ghost { background: var(--bg3); border: 1px solid var(--border2); color: var(--text); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+  .btn-success { background: #14532d; border: 1px solid #166534; color: var(--green); }
+
+  /* ── NET EQUIP TABLE ── */
+  .net-table-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid var(--border); }
+  .device-type-agg { color: var(--yellow); }
+  .device-type-poe { color: var(--text-dim); }
+  .device-type-fw { color: #c084fc; }
+
+  /* ── INFO PILLS ── */
+  .info-pills { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+  .pill {
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px;
+    padding: 6px 12px; font-family: var(--mono); font-size: 11px;
+  }
+  .pill-label { color: var(--text-muted); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
+  .pill-val { color: var(--text); }
+  .pill-val.vendor { color: var(--orange); font-weight: 600; }
+
+  /* ── HINT ── */
+  .hint { font-size: 11px; color: var(--text-muted); margin-top: 12px; line-height: 1.7; font-family: var(--mono); }
+  .hint strong { color: var(--text-dim); }
+
+  /* ── INSTRUCTIONS ── */
+  .instr-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin-bottom: 20px;
+  }
+  .instr-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--orange); font-family: var(--mono); }
+  .instr-card ol, .instr-card ul { padding-left: 18px; font-size: 12px; color: var(--text-dim); line-height: 2; }
+  .instr-card li strong { color: var(--text); }
+</style>
+</head>
+<body>
+<style>
+  #pw-screen {
+    position: fixed; inset: 0; background: #0e0e0f;
+    display: flex; align-items: center; justify-content: center; z-index: 9999;
+  }
+  .pw-box {
+    background: #141416; border: 1px solid #252528; border-radius: 8px;
+    padding: 40px 36px; text-align: center; width: 320px;
+  }
+  .pw-dot { width: 10px; height: 10px; border-radius: 50%; background: #FF6B2B; margin: 0 auto 16px; }
+  .pw-title { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;
+    letter-spacing: .12em; text-transform: uppercase; color: #FF6B2B; margin-bottom: 8px; }
+  .pw-sub { font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; color: #555; margin-bottom: 24px; }
+  .pw-input {
+    width: 100%; background: #1a1a1d; border: 1px solid #2e2e32; border-radius: 4px;
+    color: #e2e2e6; font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+    padding: 10px 12px; outline: none; margin-bottom: 12px; box-sizing: border-box;
+    transition: border-color .15s;
+  }
+  .pw-input:focus { border-color: #FF6B2B; }
+  .pw-btn {
+    width: 100%; padding: 10px; background: #FF6B2B; border: none; border-radius: 4px;
+    color: #000; font-family: 'IBM Plex Mono', monospace; font-weight: 600;
+    font-size: 12px; letter-spacing: .08em; cursor: pointer;
+  }
+  .pw-err { color: #f87171; font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    margin-top: 8px; display: none; }
+</style>
+
+<div id="pw-screen">
+  <div class="pw-box">
+    <div class="pw-dot"></div>
+    <div class="pw-title">RMN · AP Tracker</div>
+    <div class="pw-sub">Enter password to continue</div>
+    <input class="pw-input" type="password" id="pw-input" placeholder="Password"
+      onkeydown="if(event.key==='Enter')checkPW()">
+    <button class="pw-btn" onclick="checkPW()">ENTER →</button>
+    <div class="pw-err" id="pw-err">Incorrect password</div>
+  </div>
+</div>
+
+<script>
+  function checkPW() {
+    const val = document.getElementById('pw-input').value;
+    if (val === 'RMNn3wEr@') {
+      document.getElementById('pw-screen').style.display = 'none';
+      sessionStorage.setItem('rmn_auth', '1');
+    } else {
+      const err = document.getElementById('pw-err');
+      err.style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  // If already authed this session, skip
+  if (sessionStorage.getItem('rmn_auth') === '1') {
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.getElementById('pw-screen');
+      if (s) s.style.display = 'none';
+    });
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('pw-input');
+    if (inp) inp.focus();
+  });
+</script>
+
+
+<header>
+  <div class="logo-dot"></div>
+  <span class="logo-text">RMN · AP Tracker Generator</span>
+  <span class="logo-sub">Close-Out PDF → AP Tracker &amp; Net Equip</span>
+</header>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('upload')">01 / Upload PDF</button>
+  <button class="tab" id="tab-ap" onclick="showTab('ap')">02 / AP Tracker <span class="tab-badge" id="ap-count" style="display:none">0</span></button>
+  <button class="tab" id="tab-net" onclick="showTab('net')">03 / Net Equip <span class="tab-badge" id="net-count" style="display:none">0</span></button>
+  <button class="tab" id="tab-export" onclick="showTab('export')">04 / Export</button>
+</div>
+
+<!-- ══ PANEL 1: UPLOAD ══ -->
+<div class="panel active" id="panel-upload">
+
+  <div class="instr-card">
+    <h3>How it works</h3>
+    <ol>
+      <li><strong>Upload</strong> the TrueContext close-out PDF.</li>
+      <li><strong>Review &amp; edit</strong> parsed AP and Net Equip data on tabs 2 and 3.</li>
+      <li><strong>Export</strong> a populated Excel file on tab 4 — drop it in SharePoint and you're done.</li>
+    </ol>
+  </div>
+
+  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">📄</div>
+    <div class="upload-title">Drop close-out PDF here or click to browse</div>
+    <div class="upload-sub">Supports Frontier, Verizon, AT&amp;T, Cox, Astound, Ziply and other vendor forms</div>
+    <input type="file" id="fileInput" accept=".pdf" onchange="handleFile(this.files[0])">
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="spinner" id="spinner"></div>
+    <span id="statusText">Processing PDF...</span>
+  </div>
+  <div class="error-box" id="errorBox"></div>
+
+  <div class="form-section" id="siteFormSection" style="display:none">
+    <div class="section-label">Site &amp; Deployment Info</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Site Name</label>
+        <input type="text" id="f-siteName" placeholder="e.g. Town of Litchfield">
+      </div>
+      <div class="form-group">
+        <label>Property Abbreviation</label>
+        <input type="text" id="f-propAbbr" placeholder="auto-filled from CLLI">
+      </div>
+      <div class="form-group">
+        <label>CLLI Code (6 chars)</label>
+        <input type="text" id="f-clli" placeholder="e.g. LTFDCT" maxlength="8">
+      </div>
+      <div class="form-group">
+        <label>Property ID / vSZ Zone (Realm)</label>
+        <input type="text" id="f-vsz" placeholder="e.g. 953999900098">
+      </div>
+      <div class="form-group">
+        <label>Vendor / Provider</label>
+        <select id="f-vendor">
+          <option value="FRT">FRT – Frontier</option>
+          <option value="VZW">VZW – Verizon</option>
+          <option value="ATT">ATT – AT&amp;T</option>
+          <option value="COX">COX – Cox</option>
+          <option value="AST">AST – Astound</option>
+          <option value="ZPL">ZPL – Ziply</option>
+          <option value="COM">COM – Comcast</option>
+          <option value="CWC">CWC – Spectrum</option>
+          <option value="WOW">WOW – WOW</option>
+          <option value="MCOM">MCOM – Mediacom</option>
+          <option value="PETRA">PETRA – Petra</option>
+          <option value="AMT">AMT – AMT</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Vertical</label>
+        <select id="f-vertical">
+          <option value="HOS">HOS – Hospitality</option>
+          <option value="MDU">MDU – Multi-Dwelling Unit</option>
+          <option value="MXU">MXU – Mixed Use</option>
+          <option value="ENT">ENT – Enterprise</option>
+          <option value="EDU">EDU – Education</option>
+          <option value="PWF">PWF – Public WiFi</option>
+          <option value="SMB">SMB – Small Business</option>
+          <option value="VEN">VEN – Venue</option>
+          <option value="CWF">CWF – Community WiFi</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Site Address</label>
+        <input type="text" id="f-address" placeholder="Street address">
+      </div>
+      <div class="form-group">
+        <label>Circuit ID</label>
+        <input type="text" id="f-circuit" placeholder="e.g. FA/L1XN/276442//SN">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="buildTrackers()">BUILD TRACKERS →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PANEL 2: AP TRACKER ══ -->
+<div class="panel" id="panel-ap">
+  <div class="info-pills" id="apInfoPills"></div>
+  <div class="section-label">Access Points <span style="color:var(--text-muted);font-size:10px;margin-left:8px">Edit location/building/floor inline if needed</span></div>
+  <div class="table-wrap">
+    <table id="apTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Serial Number</th>
+          <th>MAC Address</th>
+          <th>Model</th>
+          <th>Building</th>
+          <th>Floor</th>
+          <th>Installed Area / Location</th>
+          <th>AP Name (auto)</th>
+          <th>Description (auto)</th>
+        </tr>
+      </thead>
+      <tbody id="apTbody"></tbody>
+    </table>
+  </div>
+  <div class="hint" id="apHint"></div>
+</div>
+
+<!-- ══ PANEL 3: NET EQUIP ══ -->
+<div class="panel" id="panel-net">
+  <div class="section-label">Network Equipment <span style="color:var(--text-muted);font-size:10px;margin-left:8px">Parsed from form — edit as needed</span></div>
+  <div class="table-wrap">
+    <table id="netTable">
+      <thead>
+        <tr>
+          <th>Device Type</th>
+          <th>Device Name (auto)</th>
+          <th>Model</th>
+          <th>Serial #</th>
+          <th>MAC Address</th>
+          <th>Building</th>
+          <th>Floor</th>
+          <th>Device #</th>
+          <th>Install Location</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody id="netTbody"></tbody>
+    </table>
+  </div>
+  <div class="hint" id="netHint" style="margin-top:12px">
+    <strong>Note:</strong> IP addresses, uplink ports, and AP counts per switch are filled in the exported file — add those after export in the tracker as those come from the design doc, not the close-out form.
+  </div>
+</div>
+
+<!-- ══ PANEL 4: EXPORT ══ -->
+<div class="panel" id="panel-export">
+  <div class="instr-card">
+    <h3>Export &amp; SharePoint Steps</h3>
+    <ol>
+      <li>Click <strong>Download Populated XLSM</strong> to get the file with AP Tracker and Net Equip filled in.</li>
+      <li>Open it in Excel — the AP Name and Description columns will auto-calculate from the data rows.</li>
+      <li>Upload to your SharePoint project folder as normal.</li>
+      <li>The <strong>Site Data tab</strong> will still need SSID passwords and PM/designer info filled in if required for your process.</li>
+    </ol>
+  </div>
+  <div id="exportSummary" style="margin-bottom:20px"></div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btnExport" onclick="exportXLSX()" disabled>⬇ DOWNLOAD POPULATED XLSX</button>
+    <button class="btn btn-ghost" onclick="exportCSV()">EXPORT AP LIST AS CSV</button>
+  </div>
+  <div class="hint" style="margin-top:16px">
+    The exported XLSX pre-fills: <strong>Site Data</strong> (site name, CLLI, vendor, vertical, vSZ zone, AP count),
+    <strong>AP Tracker</strong> (serial, raw MAC in col K, model, AP number, building, floor, installed area),
+    and <strong>Net Equip Tracker</strong> (device type, model, serial, raw MAC, building, floor, device number, location).
+    Formula columns (AP Name, Description, formatted MAC) recalculate automatically when opened in Excel.
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── STATE ──
+let state = { site: {}, aps: [], netEquip: [], rawText: '' };
+
+// ── VENDOR DETECTION ──
+const VENDOR_KEYS = {
+  'frontier': 'FRT', 'frontier communications': 'FRT',
+  'verizon': 'VZW', 'vzw': 'VZW',
+  'at&t': 'ATT', 'att ': 'ATT',
+  'cox': 'COX',
+  'astound': 'AST',
+  'ziply': 'ZPL',
+  'comcast': 'COM',
+  'spectrum': 'CWC', 'charter': 'CWC',
+  'wow!': 'WOW', 'wideopenwest': 'WOW',
+  'mediacom': 'MCOM',
+  'petra': 'PETRA',
+};
+
+function detectVendor(text) {
+  const lower = text.toLowerCase();
+  for (const [k, v] of Object.entries(VENDOR_KEYS)) {
+    if (lower.includes(k)) return v;
+  }
+  return 'FRT';
+}
+
+// ── TAB SWITCHING ──
+function showTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ── DRAG/DROP ──
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+
+// ── FILE HANDLING ──
+async function handleFile(file) {
+  if (!file || file.type !== 'application/pdf') {
+    showError('Please upload a PDF file.');
+    return;
+  }
+  hideError();
+  setStatus('Reading PDF...', true);
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      // Preserve newlines using Y-position changes between text items
+      let pageText = '';
+      let lastY = null;
+      for (const item of content.items) {
+        if (!item.str || item.str.trim() === '') continue;
+        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 2) {
+          pageText += '\n';
+        } else if (lastY !== null) {
+          pageText += ' ';
+        }
+        pageText += item.str;
+        lastY = item.transform[5];
+      }
+      fullText += pageText + '\n';
+    }
+    // Strip VALENTIN watermarks and page footer lines that bleed into location fields
+    fullText = fullText.replace(/VALENTIN\n/g, '');
+    fullText = fullText.replace(/Frontier (Close-Out|Installation)[^\n]+\n/g, '');
+    state.rawText = fullText;
+    setStatus('PDF read — ' + pdf.numPages + ' pages. Parsing data...', true);
+    parsePDF(fullText);
+    setStatus('✓ Parsed successfully. Review fields below and click Build Trackers.', false, true);
+    document.getElementById('siteFormSection').style.display = 'block';
+  } catch (e) {
+    setStatus('', false);
+    showError('Could not read PDF: ' + e.message);
+  }
+}
+
+// ── FIELD EXTRACT HELPERS ──
+function grab(text, ...patterns) {
+  for (const pat of patterns) {
+    const m = text.match(new RegExp(pat + '[\\s:]+([^\\n\\r]{1,80})', 'i'));
+    if (m) return m[1].trim().replace(/\s+/g, ' ');
+  }
+  return '';
+}
+
+function grabLine(text, label) {
+  // PDF text can have odd spacing; try flexible match
+  const patterns = [
+    new RegExp(label + '\\s{1,10}([^\\n\\r]{1,80})', 'i'),
+    new RegExp(label + '[:\\s]+([^\\n\\r]{1,80})', 'i'),
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[1].trim();
+  }
+  return '';
+}
+
+function formatMAC(raw) {
+  if (!raw) return '';
+  const clean = raw.replace(/[^a-fA-F0-9]/g, '');
+  if (clean.length !== 12) return raw.toUpperCase();
+  return clean.match(/.{2}/g).join(':').toUpperCase();
+}
+
+function stripMAC(mac) {
+  return mac.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+}
+
+function padNum(n, len) {
+  return String(n).padStart(len, '0');
+}
+
+// ── MAIN PARSER ──
+function parsePDF(text) {
+  // Normalize: collapse multiple spaces per line, keep newlines intact
+  const t = text.split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).join('\n');
+
+  // Grab value from "Label  Value" single line
+  function line(label) {
+    const escaped = label.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&');
+    const m = t.match(new RegExp('^' + escaped + '\\s+(.+)$', 'm'));
+    return m ? m[1].trim() : '';
+  }
+
+  const siteName   = line('Site Name');
+  const clli       = line('CLLI Code');
+  const vsz        = line('Property ID (Realm)');
+  const address    = line('Full Address (Street#, City, State, Zip, Code)') || line('Full Address');
+  const circuitRaw = line('Circuit ID #');
+  const circuit    = circuitRaw.includes(';') ? circuitRaw.substring(0, circuitRaw.indexOf(';') + 1) : circuitRaw;
+  const vendor     = detectVendor(t);
+  const propAbbr   = siteName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
+
+  setField('f-siteName', siteName);
+  setField('f-propAbbr', propAbbr);
+  setField('f-clli', clli.toUpperCase());
+  setField('f-vsz', vsz);
+  setField('f-address', address);
+  setField('f-circuit', circuit);
+
+  const vendorSel = document.getElementById('f-vendor');
+  for (let i = 0; i < vendorSel.options.length; i++) {
+    if (vendorSel.options[i].value === vendor) { vendorSel.selectedIndex = i; break; }
+  }
+
+  // ── PARSE APs ──
+  // Use \\n in regex strings — literal newlines in regex literals cause JS syntax errors
+  const apPattern = new RegExp(
+    'AP Device Number\\s+(\\d+)\\n' +
+    'AP Building Number\\s+(\\d+)\\n' +
+    'AP Floor Number\\s+(\\d+)\\n' +
+    'AP Location Description\\s+([^\\n]+)\\n' +
+    '(?:Provide the room[^\\n]*\\n(?:[^\\n]*etc\\)[^\\n]*\\n)?)?' +
+    'AP Device Model\\s+([^\\n]+)\\n' +
+    'AP Serial Number\\s+([A-Za-z0-9]+)\\n' +
+    'AP MAC Address\\s+([^\\n]+)',
+    'g'
+  );
+
+  state.aps = [];
+  let m;
+  while ((m = apPattern.exec(t)) !== null) {
+    const [, num, building, floor, location, model, serial, macRaw] = m;
+    state.aps.push({
+      num:      padNum(parseInt(num), 3),
+      serial:   serial.trim(),
+      macRaw:   stripMAC(macRaw.trim()),
+      mac:      formatMAC(macRaw.trim()),
+      model:    model.trim(),
+      building: building.padStart(2, '0'),
+      floor:    floor.padStart(2, '0'),
+      location: location.trim(),
+    });
+  }
+
+  // ── PARSE NETWORK DEVICES ──
+  const netPattern = new RegExp(
+    'Network Device Type\\s+([^\\n]+)\\n' +
+    'Network Device Model\\s+([^\\n]+)\\n' +
+    'Network Device Number\\s+(\\d+)\\n' +
+    'Network Device Building Number\\s+(\\d+)\\n' +
+    'Network Device Floor Number\\s+(\\d+)\\n' +
+    'Network Device Location[^\\n]*\\s+([^\\n]+)\\n' +
+    'Network Device Serial Number\\s+(\\S+)\\n' +
+    'Network Device MAC Address\\s+([^\\n]+)',
+    'g'
+  );
+
+  state.netEquip = [];
+  let nm;
+  while ((nm = netPattern.exec(t)) !== null) {
+    const [, deviceType, model, devNum, building, floor, location, serial, macRaw] = nm;
+    state.netEquip.push({
+      deviceType: deviceType.trim(),
+      model:      model.trim(),
+      deviceNum:  devNum.padStart(2, '0'),
+      building:   building.padStart(2, '0'),
+      floor:      floor.padStart(2, '0'),
+      location:   location.trim(),
+      serial:     serial.trim(),
+      macRaw:     stripMAC(macRaw.trim()),
+      mac:        formatMAC(macRaw.trim()),
+      notes:      '',
+    });
+  }
+
+  // ── PARSE POINT-TO-POINT DEVICES ──
+  // PtP blocks may or may not have a MAC address (some forms omit it)
+  const ptpPattern = new RegExp(
+    'PtP Device Number\\s+(\\d+)\\n' +
+    'PtP Mounted Location Description\\s+([^\\n]+)\\n' +
+    '(?:Specify the physical[^\\n]*\\n(?:[^\\n]*BLDG\\)[^\\n]*\\n)?)?' +
+    'PtP Device Model\\s+([^\\n]+)\\n' +
+    'PtP Device Serial Number\\s+([A-Za-z0-9]+)\\n' +
+    '(?:PtP Device MAC Address\\s+([^\\n]+)\\n)?',
+    'g'
+  );
+
+  let pm;
+  let ptpCount = state.netEquip.length;
+  while ((pm = ptpPattern.exec(t)) !== null) {
+    const [, devNum, location, model, serial, macRaw] = pm;
+    ptpCount++;
+    state.netEquip.push({
+      deviceType: 'Point-to-Point',
+      model:      model.trim(),
+      deviceNum:  devNum.padStart(2, '0'),
+      building:   '00',
+      floor:      '01',
+      location:   location.trim(),
+      serial:     serial.trim(),
+      macRaw:     macRaw ? stripMAC(macRaw.trim()) : '',
+      mac:        macRaw ? formatMAC(macRaw.trim()) : '',
+      notes:      '',
+    });
+  }
+}
+function setField(id, val) {
+  const el = document.getElementById(id);
+  if (val) { el.value = val; el.classList.add('auto-filled'); }
+}
+
+// ── BUILD TRACKERS (after user confirms fields) ──
+function buildTrackers() {
+  const vendor = document.getElementById('f-vendor').value;
+  const clli = document.getElementById('f-clli').value.trim().toUpperCase();
+  const propAbbr = document.getElementById('f-propAbbr').value.trim();
+  const vsz = document.getElementById('f-vsz').value.trim();
+  const vertical = document.getElementById('f-vertical').value;
+  const siteName = document.getElementById('f-siteName').value.trim();
+
+  if (!clli || !propAbbr || !vendor) {
+    showError('CLLI code, property abbreviation, and vendor are required.');
+    return;
+  }
+  hideError();
+
+  // Attach site context to state
+  state.site = { vendor, clli, propAbbr, vsz, vertical, siteName };
+
+  // Build AP rows
+  renderAPTable();
+  renderNetTable();
+
+  // Update badges
+  document.getElementById('ap-count').textContent = state.aps.length;
+  document.getElementById('ap-count').style.display = state.aps.length ? 'inline-block' : 'none';
+  document.getElementById('net-count').textContent = state.netEquip.length;
+  document.getElementById('net-count').style.display = state.netEquip.length ? 'inline-block' : 'none';
+
+  document.getElementById('btnExport').disabled = false;
+
+  // Update export summary
+  document.getElementById('exportSummary').innerHTML = `
+    <div class="info-pills">
+      ${pill('Site', siteName)}
+      ${pill('Vendor', vendor, 'vendor')}
+      ${pill('CLLI', clli)}
+      ${pill('vSZ Zone', vsz || '—')}
+      ${pill('Vertical', vertical)}
+      ${pill('APs', state.aps.length)}
+      ${pill('Net Devices', state.netEquip.length)}
+    </div>`;
+
+  showTab('ap');
+  document.querySelectorAll('.tab')[1].classList.add('active');
+  document.querySelectorAll('.tab')[0].classList.remove('active');
+}
+
+function pill(label, val, cls) {
+  return `<div class="pill"><div class="pill-label">${label}</div><div class="pill-val ${cls||''}">${val}</div></div>`;
+}
+
+function apName(ap) {
+  const s = state.site;
+  return `${s.vendor}-${s.clli}-${s.propAbbr.toUpperCase()}-${s.vertical}-AP${ap.num}`;
+}
+
+function apDesc(ap) {
+  const s = state.site;
+  return `${s.propAbbr.toUpperCase()}:${s.vsz}:${ap.building}:${ap.floor}:${ap.location}`;
+}
+
+function switchName(sw) {
+  const s = state.site;
+  const type = sw.deviceType.toLowerCase().includes('aggregate') ? 'AGG' : 'POE';
+  return `ICX-${s.vendor}-${s.siteName.replace(/[^a-zA-Z0-9]/g,'')}-${type}-${sw.building}${sw.floor}${sw.deviceNum}`;
+}
+
+// ── RENDER AP TABLE ──
+function renderAPTable() {
+  const tbody = document.getElementById('apTbody');
+  tbody.innerHTML = '';
+  const pills = document.getElementById('apInfoPills');
+  pills.innerHTML = [
+    pill('Vendor', state.site.vendor, 'vendor'),
+    pill('CLLI', state.site.clli),
+    pill('Property Name', state.site.siteName),
+    pill('Prop Abbr', state.site.propAbbr),
+    pill('Vertical', state.site.vertical),
+    pill('vSZ Zone', state.site.vsz || '—'),
+    pill('AP Count', state.aps.length),
+  ].join('');
+
+  state.aps.forEach((ap, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="td-num">${ap.num}</td>
+      <td><input class="cell-input" style="width:110px" value="${ap.serial||''}" placeholder="missing" oninput="state.aps[${i}].serial=this.value"></td>
+      <td><input class="cell-input" style="width:135px" value="${ap.mac||''}" placeholder="missing" oninput="state.aps[${i}].mac=this.value;state.aps[${i}].macRaw=this.value.replace(/[^a-fA-F0-9]/g,'').toUpperCase()"></td>
+      <td>${ap.model}</td>
+      <td><input class="cell-input" style="width:50px" value="${ap.building}" oninput="updateAP(${i},'building',this.value)"></td>
+      <td><input class="cell-input" style="width:50px" value="${ap.floor}" oninput="updateAP(${i},'floor',this.value)"></td>
+      <td><input class="cell-input" style="width:160px" value="${ap.location}" oninput="updateAP(${i},'location',this.value)"></td>
+      <td class="td-ap-name" id="apname-${i}">${apName(ap)}</td>
+      <td class="td-desc" id="apdesc-${i}">${apDesc(ap)}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const missing = state.aps.filter(a => !a.serial).length;
+  document.getElementById('apHint').innerHTML = missing
+    ? `<strong>Note:</strong> ${missing} AP(s) have missing serial numbers — these can be filled in the exported Excel file.`
+    : '';
+}
+
+function updateAP(i, field, val) {
+  state.aps[i][field] = val;
+  document.getElementById('apname-' + i).textContent = apName(state.aps[i]);
+  document.getElementById('apdesc-' + i).textContent = apDesc(state.aps[i]);
+}
+
+// ── RENDER NET EQUIP TABLE ──
+function renderNetTable() {
+  const tbody = document.getElementById('netTbody');
+  tbody.innerHTML = '';
+
+  if (state.netEquip.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="padding:20px;color:var(--text-muted);text-align:center;font-family:var(--mono);font-size:11px">No network devices found in PDF — this form may only list wireless devices.<br>You can add them manually in the exported Excel file.</td></tr>';
+    return;
+  }
+
+  state.netEquip.forEach((sw, i) => {
+    const typeClass = sw.deviceType.toLowerCase().includes('aggregate') ? 'device-type-agg'
+      : sw.deviceType.toLowerCase().includes('fire') || sw.deviceType.toLowerCase().includes('gate') ? 'device-type-fw'
+      : 'device-type-poe';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="${typeClass}">${sw.deviceType}</td>
+      <td style="color:var(--blue);font-size:10px">${switchName(sw)}</td>
+      <td><input class="cell-input" style="width:110px" value="${sw.model}" oninput="state.netEquip[${i}].model=this.value"></td>
+      <td><input class="cell-input" style="width:100px" value="${sw.serial}" oninput="state.netEquip[${i}].serial=this.value"></td>
+      <td><input class="cell-input" style="width:130px" value="${sw.mac}" oninput="state.netEquip[${i}].mac=this.value;state.netEquip[${i}].macRaw=this.value.replace(/[^a-fA-F0-9]/g,'')"></td>
+      <td><input class="cell-input" style="width:50px" value="${sw.building}" oninput="state.netEquip[${i}].building=this.value"></td>
+      <td><input class="cell-input" style="width:50px" value="${sw.floor}" oninput="state.netEquip[${i}].floor=this.value"></td>
+      <td><input class="cell-input" style="width:50px" value="${sw.deviceNum}" oninput="state.netEquip[${i}].deviceNum=this.value"></td>
+      <td><input class="cell-input" style="width:130px" value="${sw.location}" oninput="state.netEquip[${i}].location=this.value"></td>
+      <td><input class="cell-input" style="width:120px" value="${sw.notes||''}" oninput="state.netEquip[${i}].notes=this.value"></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── EXPORT XLSX ──
+// Exactly matches the column structure Ansible expects from the tracker template.
+//
+// AP Tracker layout (matches gold standard Wyndham file):
+//   Row 1  : hidden reference row — cols Y-AJ hold site metadata used by formulas
+//   Row 2  : column headers
+//   Row 3+ : data
+//   Col A  = AP Serial Number        (value)
+//   Col B  = AP MAC                  (formula from K — autofilled)
+//   Col C  = vSZ Zone                (formula from AJ — autofilled)
+//   Col D  = AP Model Number         (value)
+//   Col E  = AP Name                 (formula from Z,AB,AD,AF,G — autofilled)
+//   Col F  = Description             (formula from AD,C,H,I,J — autofilled)
+//   Col G  = AP Number Match         (value, zero-padded 3 digits)
+//   Col H  = Building                (value)
+//   Col I  = Floor                   (value)
+//   Col J  = Installed Area          (value)
+//   Col K  = Raw MAC Address         (value — 12 hex chars, no separators)
+//   Col L  = x                       (blank spacer)
+//   Col M  = Installation Date       (blank)
+//   Col N  = Cabled Date             (blank)
+//   Col O  = CatX CC Test P/F        (blank)
+//   Col P  = RF Signal Level 2.4 GHz (blank)
+//   Col Q  = RF Signal Level 5 GHz   (blank)
+//   Col R  = AP Speed Test DL        (blank)
+//   Col S  = AP Speed Test UL        (blank)
+//   Col T  = Post Install Pkg        (blank)
+//
+// Net Equip Tracker layout:
+//   Row 1  : column headers
+//   Row 2+ : data
+//   Col A  = Device Type
+//   Col B  = Device Name             (formula-style name)
+//   Col C  = IP Address              (blank — comes from design doc)
+//   Col D  = Uplink Port             (blank)
+//   Col E  = Number of APs           (blank)
+//   Col F  = MODEL
+//   Col G  = MAC Address             (formula from L — autofilled)
+//   Col H  = Building
+//   Col I  = Floor (2 digit)
+//   Col J  = Device Number
+//   Col K  = Serial #
+//   Col L  = Fill-in Raw Mac Address (12 hex chars, no separators)
+//   Col M  = Network Device Install Date (blank)
+//   Col N  = Install Location
+//   Col O  = NOTES
+
+function exportXLSX() {
+  const s = state.site;
+  const wb = XLSX.utils.book_new();
+
+  // ── Site Data sheet ──
+  // Rows match exactly the B-column positions the AP Tracker formulas reference:
+  // B3=PropAbbr, B8=CLLI, B9=Vendor, B10=Vertical, B11=vSZ, B12=APCount
+  const sdRows = [
+    ['Fill in data on this sheet'],                          // row 1
+    ['Site Name', s.siteName],                              // row 2
+    ['Property Abbreviation', s.propAbbr],                  // row 3  ← AD formula
+    ['Site Address', document.getElementById('f-address').value], // row 4
+    ['City', ''],                                           // row 5
+    ['State', ''],                                          // row 6
+    ['Zip Code', ''],                                       // row 7
+    ['CLLI Code (First 6 Characters)', s.clli],             // row 8  ← AB formula
+    ['Provider (USE DROP DOWN)', s.vendor],                 // row 9  ← Z formula
+    ['Vertical', s.vertical],                               // row 10 ← AF formula
+    ['vSZ Zone', { v: String(s.vsz), t: 's' }],             // row 11 ← AJ formula
+    ['AP Count', state.aps.length],                         // row 12 ← AH formula
+    ['APs to be Cabled', ''],
+    ['vmEdge Count', 0],
+    ['FireWall Count', state.netEquip.filter(d=>d.deviceType.toLowerCase().includes('fire')||d.deviceType.toLowerCase().includes('gate')).length],
+    ['AGG Switch Count', state.netEquip.filter(d=>d.deviceType.toLowerCase().includes('aggregate')).length],
+    ['SAG Count (Secondary Agg switch)', 0],
+    ['PoE Switch Count', state.netEquip.filter(d=>d.deviceType.toLowerCase().includes('downlink')||d.deviceType.toLowerCase().includes('poe')).length],
+    ['MDF-IDF Count', ''],
+    ['MDF-IDFs to be Built', ''],
+    [],
+    ['DM', ''],
+    ['Site Lead', ''],
+    ['Designer', 'Select Designer'],
+    ['D&D PM', ''],
+    ['Core PM', ''],
+    ['NOC Service Delivery Lead', 'Russell Jones'],
+    ['SSIDs', null, null, 'WPA2 Key (if applicable)'],
+    ['Onboarding (if applicable)', ''],
+    ['Resident (if applicable)', '', null, 'You create your own after joining Onboard SSID'],
+    ['Guest', ''],
+    ['Private', ''],
+    ['Additional SSID (if applicable)', ''],
+    ['Additional SSID (if applicable)', ''],
+  ];
+  const sdWS = XLSX.utils.aoa_to_sheet(sdRows);
+  sdWS['!cols'] = [{wch:32},{wch:32},{wch:4},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, sdWS, 'Site Data');
+
+  // ── AP Tracker sheet ──
+  const apWS = {};
+  const apCount = state.aps.length;
+
+  // ROW 1: site metadata reference cells in cols Y(25)-AJ(36)
+  // These are what the E and F formulas pull from via $Z$1, $AB$1, $AD$1, $AF$1, $AH$1, $AJ$1
+  const r1meta = {
+    Y1: 'Customer:',
+    Z1: { f: "'Site Data'!B9" },      // Vendor  ← AP Name formula uses $Z$1
+    AA1: 'CLLI Code:',
+    AB1: { f: "'Site Data'!B8" },     // CLLI    ← AP Name formula uses $AB$1
+    AC1: 'Property Name:',
+    AD1: { f: "'Site Data'!B3" },     // PropAbbr← AP Name + Desc formulas use $AD$1
+    AE1: 'Vertical Type:',
+    AF1: { f: "'Site Data'!B10" },    // Vertical← AP Name formula uses $AF$1
+    AG1: 'AP Count:',
+    AH1: { f: "'Site Data'!B12" },    // AP Count← row-limit guard uses $AH$1
+    AI1: 'vSZ Zone:',
+    AJ1: { v: String(s.vsz), t: 's' },    // vSZ Zone← C formula uses $AJ$1
+  };
+  Object.entries(r1meta).forEach(([addr, val]) => {
+    apWS[addr] = typeof val === 'object' ? val : { v: val, t: 's' };
+  });
+
+  // ROW 2: headers — exact text from gold standard
+  const apHeaders = [
+    'AP Serial Number',
+    'AP MAC\n(Autofilled from raw data in Column M ----->)',
+    'vSZ Zone',
+    'AP Model Number',
+    'AP Name\n(Autofilled)',
+    'Description                                                            (Autofilled)',
+    'AP Number Match',
+    'Building',
+    'Floor              (2 digit)',
+    'Installed Area',
+    'Raw MACAddress',
+    'x',
+    'Installation Date',
+    'Cabled Date\n(if pre-wired enter NA)',
+    'CatX CC Test P/F',
+    'RF Signal Level 2.4 GHz',
+    'RF Signal Level 5 GHz',
+    'AP Speed Test DL',
+    'AP Speed Test UL',
+    'Post Install Pkg Completed',
+  ];
+  apHeaders.forEach((h, ci) => {
+    const addr = XLSX.utils.encode_cell({ r: 1, c: ci });
+    apWS[addr] = { v: h, t: 's' };
+  });
+
+  // ROWS 3+: data + formulas
+  state.aps.forEach((ap, i) => {
+    const r = i + 2; // 0-indexed row, so row 3 in Excel = index 2
+    const rn = r + 1; // 1-indexed Excel row number for formula strings
+
+    // A: Serial Number
+    apWS[XLSX.utils.encode_cell({r, c:0})] = ap.serial
+      ? { v: ap.serial, t: 's' } : { v: '', t: 's' };
+
+    // B: MAC formula — mirrors gold standard exactly
+    apWS[XLSX.utils.encode_cell({r, c:1})] = {
+      f: `IF(ROW()-ROW($C$2)<=$AH$1,LEFT(K${rn},2)&":"&MID(K${rn},3,2)&":"&MID(K${rn},5,2)&":"&MID(K${rn},7,2)&":"&MID(K${rn},9,2)&":"&RIGHT(K${rn},2),"")`
+    };
+
+    // C: vSZ Zone formula — mirrors gold standard
+    apWS[XLSX.utils.encode_cell({r, c:2})] = {
+      f: `IF(ROW()-ROW($C$2)<=$AH$1,$AJ$1,"")`
+    };
+
+    // D: Model
+    apWS[XLSX.utils.encode_cell({r, c:3})] = { v: ap.model, t: 's' };
+
+    // E: AP Name formula — use & concatenation (avoids @ implicit intersection in Excel)
+    apWS[XLSX.utils.encode_cell({r, c:4})] = {
+      f: `IF(ROW()-2<=$AH$1,$Z$1&"-"&$AB$1&"-"&UPPER($AD$1)&"-"&$AF$1&"-"&"AP"&G${rn},"")`
+    };
+
+    // F: Description formula — use & concatenation
+    apWS[XLSX.utils.encode_cell({r, c:5})] = {
+      f: `IF(ROW()-ROW($C$2)<=$AH$1,UPPER($AD$1)&":"&C${rn}&":"&H${rn}&":"&I${rn}&":"&J${rn},"")`
+    };
+
+    // G: AP Number (3-digit zero-padded string)
+    apWS[XLSX.utils.encode_cell({r, c:6})] = { v: ap.num, t: 's' };
+
+    // H: Building
+    apWS[XLSX.utils.encode_cell({r, c:7})] = { v: ap.building, t: 's' };
+
+    // I: Floor
+    apWS[XLSX.utils.encode_cell({r, c:8})] = { v: ap.floor, t: 's' };
+
+    // J: Installed Area
+    apWS[XLSX.utils.encode_cell({r, c:9})] = { v: ap.location, t: 's' };
+
+    // K: Raw MAC (12 hex chars, no separators) — this is what B formula reads
+    apWS[XLSX.utils.encode_cell({r, c:10})] = { v: ap.macRaw, t: 's' };
+
+    // L-T: blank columns (spacer + future fields)
+    for (let ci = 11; ci <= 19; ci++) {
+      apWS[XLSX.utils.encode_cell({r, c:ci})] = { v: '', t: 's' };
+    }
+  });
+
+  // Sheet ref
+  apWS['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r: apCount+2, c:35} });
+  apWS['!cols'] = [
+    {wch:18}, // A Serial
+    {wch:20}, // B MAC
+    {wch:16}, // C vSZ
+    {wch:14}, // D Model
+    {wch:52}, // E AP Name
+    {wch:60}, // F Description
+    {wch:10}, // G AP#
+    {wch:10}, // H Building
+    {wch:10}, // I Floor
+    {wch:28}, // J Installed Area
+    {wch:16}, // K Raw MAC
+    {wch:4},  // L x
+    {wch:16}, // M Install Date
+    {wch:16}, // N Cabled Date
+    {wch:14}, // O CatX
+    {wch:14}, // P RF 2.4
+    {wch:14}, // Q RF 5
+    {wch:14}, // R DL
+    {wch:14}, // S UL
+    {wch:20}, // T Post Install
+  ];
+  XLSX.utils.book_append_sheet(wb, apWS, 'AP Tracker');
+
+  // ── Net Equip Tracker sheet ──
+  // Exact column order from gold standard:
+  // A=DeviceType, B=DeviceName, C=IP, D=UplinkPort, E=NumAPs,
+  // F=MODEL, G=MAC(formula from L), H=Building, I=Floor, J=DeviceNum,
+  // K=Serial, L=RawMAC, M=InstallDate, N=InstallLocation, O=NOTES
+  const netHeaders = [
+    'Device Type',
+    'Device Name',
+    'IP Address',
+    'Uplink Port',
+    'Number of \nAPs',
+    'MODEL',
+    'MAC Address\n(Autofilled from column K ---->)',
+    'Building',
+    'Floor (2 digit)',
+    'Device Number',
+    'Serial #',
+    'Fill-in Raw Mac Address here',
+    'Network Device Install Date',
+    'Install Location                       (MDF/IDF Room #)',
+    'NOTES',
+  ];
+
+  const netWS = {};
+  netHeaders.forEach((h, ci) => {
+    netWS[XLSX.utils.encode_cell({r:0, c:ci})] = { v: h, t: 's' };
+  });
+
+  state.netEquip.forEach((sw, i) => {
+    const r = i + 1;
+    const rn = r + 1;
+    const isAgg = sw.deviceType.toLowerCase().includes('aggregate');
+    const isFW  = sw.deviceType.toLowerCase().includes('fire') || sw.deviceType.toLowerCase().includes('gate');
+    const nameType = isFW ? 'FGT' : isAgg ? 'AGG' : 'POE';
+    const devName = isFW
+      ? `${s.propAbbr}-FGT-01`
+      : `ICX-${s.vendor}-${s.siteName.replace(/[^a-zA-Z0-9]/g,'')}-${nameType}-${sw.building}${sw.floor}${sw.deviceNum}`;
+
+    netWS[XLSX.utils.encode_cell({r, c:0})]  = { v: sw.deviceType, t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:1})]  = { v: devName, t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:2})]  = { v: '', t:'s' };  // IP — from design doc
+    netWS[XLSX.utils.encode_cell({r, c:3})]  = { v: '', t:'s' };  // Uplink port
+    netWS[XLSX.utils.encode_cell({r, c:4})]  = { v: '', t:'s' };  // Num APs
+    netWS[XLSX.utils.encode_cell({r, c:5})]  = { v: sw.model, t:'s' };
+    // G: MAC formula from col L (raw MAC)
+    netWS[XLSX.utils.encode_cell({r, c:6})]  = sw.macRaw
+      ? { f: `LEFT(L${rn},2)&":"&MID(L${rn},3,2)&":"&MID(L${rn},5,2)&":"&MID(L${rn},7,2)&":"&MID(L${rn},9,2)&":"&RIGHT(L${rn},2)` }
+      : { v: '', t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:7})]  = { v: sw.building, t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:8})]  = { v: sw.floor, t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:9})]  = { v: sw.deviceNum, t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:10})] = { v: sw.serial, t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:11})] = { v: sw.macRaw, t:'s' }; // L: raw MAC
+    netWS[XLSX.utils.encode_cell({r, c:12})] = { v: '', t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:13})] = { v: sw.location, t:'s' };
+    netWS[XLSX.utils.encode_cell({r, c:14})] = { v: sw.notes||'', t:'s' };
+  });
+
+  const netRowCount = Math.max(state.netEquip.length, 1);
+  netWS['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:netRowCount, c:14} });
+  netWS['!cols'] = [
+    {wch:20},{wch:52},{wch:14},{wch:14},{wch:10},
+    {wch:18},{wch:20},{wch:10},{wch:10},{wch:12},
+    {wch:16},{wch:20},{wch:16},{wch:28},{wch:24},
+  ];
+  XLSX.utils.book_append_sheet(wb, netWS, 'Net Equip Tracker');
+
+  // Download
+  const filename = `AP_Tracker_${s.clli || 'export'}_${s.siteName.replace(/[^a-zA-Z0-9]/g,'_') || 'site'}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
+
+// ── EXPORT CSV ──
+function exportCSV() {
+  const s = state.site;
+  const rows = [
+    ['AP Number','Serial Number','MAC Address','Model','Building','Floor','Installed Area','AP Name','Description'],
+    ...state.aps.map(ap => [
+      ap.num, ap.serial, ap.mac, ap.model,
+      ap.building, ap.floor, ap.location,
+      apName(ap), apDesc(ap)
+    ])
+  ];
+  const csv = rows.map(r => r.map(c => `"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `AP_List_${s.clli || 'export'}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── UI HELPERS ──
+function setStatus(msg, loading, ok) {
+  const bar = document.getElementById('statusBar');
+  const spinner = document.getElementById('spinner');
+  const text = document.getElementById('statusText');
+  bar.classList.add('visible');
+  spinner.style.display = loading ? 'block' : 'none';
+  text.textContent = msg;
+  text.className = ok ? 'status-ok' : (loading ? '' : '');
+  if (!msg) bar.classList.remove('visible');
+}
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.textContent = msg;
+  box.classList.add('visible');
+}
+
+function hideError() {
+  document.getElementById('errorBox').classList.remove('visible');
+}
+</script>
+</body>
+</html>
