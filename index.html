@@ -438,6 +438,10 @@ async function handleFile(file) {
     // Strip VALENTIN watermarks and page footer lines that bleed into location fields
     fullText = fullText.replace(/VALENTIN\n/g, '');
     fullText = fullText.replace(/Frontier (Close-Out|Installation)[^\n]+\n/g, '');
+    // Strip Lightpath page headers/footers that interrupt field sequences across page breaks
+    fullText = fullText.replace(/Lightpath (Close-Out|Installation)[^\n]+\n/g, '');
+    fullText = fullText.replace(/PAGE \d+ OF \d+\n/g, '');
+    fullText = fullText.replace(/\d{4}-\d{2}-\d{2} - \d{2}:\d{2}:\d{2}\n/g, '');
     state.rawText = fullText;
     setStatus('PDF read — ' + pdf.numPages + ' pages. Parsing data...', true);
     parsePDF(fullText);
@@ -520,61 +524,76 @@ function parsePDF(text) {
   }
 
   // ── PARSE APs ──
-  // Supports two form layouts:
-  //   Frontier:  AP Device Number -> Building -> Floor -> Location -> Model -> Serial -> MAC
-  //   Lightpath: AP Device Model -> AP Device Number -> Building -> Floor? -> Location? -> Serial -> MAC
-  // We try Lightpath layout first (model before number), then fall back to Frontier layout.
-  // Floor and Location are optional in Lightpath forms.
+  // AP entries in some PDFs (e.g. Lightpath) split across page boundaries, so the fields
+  // are NOT on consecutive lines. Page headers/footers/section banners are injected between
+  // them. Strategy: use a field-level extractor keyed on AP Device Number, pulling each
+  // field anywhere within a window around each AP Number occurrence.
+  //
+  // For Frontier forms, fields appear consecutively - the per-line regex still works fine.
+  // We detect which form type by checking whether AP Device Model precedes AP Device Number.
 
-  const apPatternLightpath = new RegExp(
-    'AP Device Model\\s+([^\\n]+)\\n' +
-    'AP Device Number\\s+(\\d+)\\n' +
-    'AP Building Number\\s+(\\d+)\\n' +
-    '(?:AP Floor Number\\s+(\\d+)\\n)?' +
-    '(?:AP Location Description\\s+([^\\n]+)\\n)?' +
-    '(?:Provide the room[^\\n]*\\n(?:[^\\n]*etc\\)[^\\n]*\\n)?)?' +
-    'AP Serial Number\\s+([A-Za-z0-9]+)\\n' +
-    'AP MAC Address\\s+([^\\n]+)',
-    'g'
-  );
-
-  const apPatternFrontier = new RegExp(
-    'AP Device Number\\s+(\\d+)\\n' +
-    'AP Building Number\\s+(\\d+)\\n' +
-    '(?:AP Floor Number\\s+(\\d+)\\n)?' +
-    '(?:AP Location Description\\s+([^\\n]+)\\n)?' +
-    '(?:Provide the room[^\\n]*\\n(?:[^\\n]*etc\\)[^\\n]*\\n)?)?' +
-    'AP Device Model\\s+([^\\n]+)\\n' +
-    'AP Serial Number\\s+([A-Za-z0-9]+)\\n' +
-    'AP MAC Address\\s+([^\\n]+)',
-    'g'
-  );
+  // Helper: extract a labeled field value from a chunk of text (ignores line adjacency)
+  function apField(chunk, label) {
+    const m = chunk.match(new RegExp(label + '\\s+([^\\n\\r]{1,80})', 'i'));
+    return m ? m[1].trim() : '';
+  }
 
   state.aps = [];
   let m;
 
-  // Try Lightpath layout first
-  let lpMatches = [...t.matchAll(apPatternLightpath)];
-  let frMatches = [...t.matchAll(apPatternFrontier)];
+  // Split the full text into per-AP blocks by anchoring on "AP Device Number"
+  // Each block runs from one "AP Device Number" label to the next
+  const apNumPattern = /AP Device Number\s+(\d+)/g;
+  const apNumMatches = [...t.matchAll(apNumPattern)];
 
-  if (lpMatches.length >= frMatches.length && lpMatches.length > 0) {
-    // Lightpath layout: [, model, num, building, floor, location, serial, macRaw]
-    for (const m of lpMatches) {
-      const [, model, num, building, floor, location, serial, macRaw] = m;
+  if (apNumMatches.length > 0) {
+    for (let i = 0; i < apNumMatches.length; i++) {
+      const start = apNumMatches[i].index;
+      // Window: 600 chars before (to catch model when it precedes number) and up to next block
+      const windowStart = Math.max(0, start - 600);
+      const windowEnd = i + 1 < apNumMatches.length
+        ? apNumMatches[i + 1].index + 600  // include a bit of next block to catch trailing fields
+        : start + 1200;
+      const chunk = t.slice(windowStart, windowEnd);
+
+      const num      = apNumMatches[i][1];
+      const model    = apField(chunk, 'AP Device Model');
+      const building = apField(chunk, 'AP Building Number');
+      const floor    = apField(chunk, 'AP Floor Number');
+      const location = apField(chunk, 'AP Location Description');
+      const serial   = apField(chunk, 'AP Serial Number');
+      const macRaw   = apField(chunk, 'AP MAC Address');
+
+      // Skip if this looks like a form-label row with no real data (number must be digits)
+      if (!num.match(/^\d+$/)) continue;
+      // Skip if we have no serial and no MAC - likely a spurious match
+      if (!serial && !macRaw) continue;
+
       state.aps.push({
         num:      padNum(parseInt(num), 3),
-        serial:   serial.trim(),
-        macRaw:   stripMAC(macRaw.trim()),
-        mac:      formatMAC(macRaw.trim()),
-        model:    model.trim(),
+        serial:   serial,
+        macRaw:   macRaw ? stripMAC(macRaw) : '',
+        mac:      macRaw ? formatMAC(macRaw) : '',
+        model:    model,
         building: (building || '01').padStart(2, '0'),
         floor:    (floor || '01').padStart(2, '0'),
-        location: (location || '').trim(),
+        location: location,
       });
     }
   } else {
-    // Frontier layout: [, num, building, floor, location, model, serial, macRaw]
-    for (const m of frMatches) {
+    // Fallback: Frontier-style consecutive-line regex
+    const apPatternFrontier = new RegExp(
+      'AP Device Number\\s+(\\d+)\\n' +
+      'AP Building Number\\s+(\\d+)\\n' +
+      '(?:AP Floor Number\\s+(\\d+)\\n)?' +
+      '(?:AP Location Description\\s+([^\\n]+)\\n)?' +
+      '(?:Provide the room[^\\n]*\\n(?:[^\\n]*etc\\)[^\\n]*\\n)?)?' +
+      'AP Device Model\\s+([^\\n]+)\\n' +
+      'AP Serial Number\\s+([A-Za-z0-9]+)\\n' +
+      'AP MAC Address\\s+([^\\n]+)',
+      'g'
+    );
+    while ((m = apPatternFrontier.exec(t)) !== null) {
       const [, num, building, floor, location, model, serial, macRaw] = m;
       state.aps.push({
         num:      padNum(parseInt(num), 3),
