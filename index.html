@@ -520,12 +520,29 @@ function parsePDF(text) {
   }
 
   // ── PARSE APs ──
-  // Use \\n in regex strings — literal newlines in regex literals cause JS syntax errors
-  const apPattern = new RegExp(
+  // Supports two form layouts:
+  //   Frontier:  AP Device Number -> Building -> Floor -> Location -> Model -> Serial -> MAC
+  //   Lightpath: AP Device Model -> AP Device Number -> Building -> Floor? -> Location? -> Serial -> MAC
+  // We try Lightpath layout first (model before number), then fall back to Frontier layout.
+  // Floor and Location are optional in Lightpath forms.
+
+  const apPatternLightpath = new RegExp(
+    'AP Device Model\\s+([^\\n]+)\\n' +
     'AP Device Number\\s+(\\d+)\\n' +
     'AP Building Number\\s+(\\d+)\\n' +
-    'AP Floor Number\\s+(\\d+)\\n' +
-    'AP Location Description\\s+([^\\n]+)\\n' +
+    '(?:AP Floor Number\\s+(\\d+)\\n)?' +
+    '(?:AP Location Description\\s+([^\\n]+)\\n)?' +
+    '(?:Provide the room[^\\n]*\\n(?:[^\\n]*etc\\)[^\\n]*\\n)?)?' +
+    'AP Serial Number\\s+([A-Za-z0-9]+)\\n' +
+    'AP MAC Address\\s+([^\\n]+)',
+    'g'
+  );
+
+  const apPatternFrontier = new RegExp(
+    'AP Device Number\\s+(\\d+)\\n' +
+    'AP Building Number\\s+(\\d+)\\n' +
+    '(?:AP Floor Number\\s+(\\d+)\\n)?' +
+    '(?:AP Location Description\\s+([^\\n]+)\\n)?' +
     '(?:Provide the room[^\\n]*\\n(?:[^\\n]*etc\\)[^\\n]*\\n)?)?' +
     'AP Device Model\\s+([^\\n]+)\\n' +
     'AP Serial Number\\s+([A-Za-z0-9]+)\\n' +
@@ -535,30 +552,54 @@ function parsePDF(text) {
 
   state.aps = [];
   let m;
-  while ((m = apPattern.exec(t)) !== null) {
-    const [, num, building, floor, location, model, serial, macRaw] = m;
-    state.aps.push({
-      num:      padNum(parseInt(num), 3),
-      serial:   serial.trim(),
-      macRaw:   stripMAC(macRaw.trim()),
-      mac:      formatMAC(macRaw.trim()),
-      model:    model.trim(),
-      building: building.padStart(2, '0'),
-      floor:    floor.padStart(2, '0'),
-      location: location.trim(),
-    });
+
+  // Try Lightpath layout first
+  let lpMatches = [...t.matchAll(apPatternLightpath)];
+  let frMatches = [...t.matchAll(apPatternFrontier)];
+
+  if (lpMatches.length >= frMatches.length && lpMatches.length > 0) {
+    // Lightpath layout: [, model, num, building, floor, location, serial, macRaw]
+    for (const m of lpMatches) {
+      const [, model, num, building, floor, location, serial, macRaw] = m;
+      state.aps.push({
+        num:      padNum(parseInt(num), 3),
+        serial:   serial.trim(),
+        macRaw:   stripMAC(macRaw.trim()),
+        mac:      formatMAC(macRaw.trim()),
+        model:    model.trim(),
+        building: (building || '01').padStart(2, '0'),
+        floor:    (floor || '01').padStart(2, '0'),
+        location: (location || '').trim(),
+      });
+    }
+  } else {
+    // Frontier layout: [, num, building, floor, location, model, serial, macRaw]
+    for (const m of frMatches) {
+      const [, num, building, floor, location, model, serial, macRaw] = m;
+      state.aps.push({
+        num:      padNum(parseInt(num), 3),
+        serial:   serial.trim(),
+        macRaw:   stripMAC(macRaw.trim()),
+        mac:      formatMAC(macRaw.trim()),
+        model:    model.trim(),
+        building: (building || '01').padStart(2, '0'),
+        floor:    (floor || '01').padStart(2, '0'),
+        location: (location || '').trim(),
+      });
+    }
   }
 
   // ── PARSE NETWORK DEVICES ──
+  // Serial and MAC are optional - some forms (e.g. Lightpath early entries) may omit them
   const netPattern = new RegExp(
     'Network Device Type\\s+([^\\n]+)\\n' +
     'Network Device Model\\s+([^\\n]+)\\n' +
     'Network Device Number\\s+(\\d+)\\n' +
     'Network Device Building Number\\s+(\\d+)\\n' +
     'Network Device Floor Number\\s+(\\d+)\\n' +
-    'Network Device Location[^\\n]*\\s+([^\\n]+)\\n' +
-    'Network Device Serial Number\\s+(\\S+)\\n' +
-    'Network Device MAC Address\\s+([^\\n]+)',
+    '(?:Network Device Location[^\\n]*\\s+([^\\n]+)\\n)?' +
+    '(?:Network Device Serial Number\\s+(\\S+)\\n)?' +
+    '(?:Network Device MAC Address\\s+([^\\n]+))?',
     'g'
   );
 
@@ -566,16 +607,18 @@ function parsePDF(text) {
   let nm;
   while ((nm = netPattern.exec(t)) !== null) {
     const [, deviceType, model, devNum, building, floor, location, serial, macRaw] = nm;
+    // Skip empty matches (can occur with all-optional tail groups)
+    if (!deviceType || !model || !devNum) continue;
     state.netEquip.push({
       deviceType: deviceType.trim(),
       model:      model.trim(),
       deviceNum:  devNum.padStart(2, '0'),
       building:   building.padStart(2, '0'),
       floor:      floor.padStart(2, '0'),
-      location:   location.trim(),
-      serial:     serial.trim(),
-      macRaw:     stripMAC(macRaw.trim()),
-      mac:        formatMAC(macRaw.trim()),
+      location:   (location || '').trim(),
+      serial:     (serial || '').trim(),
+      macRaw:     macRaw ? stripMAC(macRaw.trim()) : '',
+      mac:        macRaw ? formatMAC(macRaw.trim()) : '',
       notes:      '',
     });
   }
